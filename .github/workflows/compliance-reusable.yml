@@ -82,7 +82,7 @@ jobs:
       - name: Terraform Validate
         if: inputs.profile == 'terraform'
         run: |
-          find . -name '*.tf' -exec dirname {} \; | sort -u | while read dir; do
+          find . -name '*.tf' -exec dirname {} \; | sort -u | while IFS= read -r dir; do
             echo "::group::Validating $dir"
             terraform -chdir="$dir" init -backend=false 2>/dev/null || true
             terraform -chdir="$dir" validate
@@ -110,7 +110,7 @@ jobs:
       - name: Packer Validate
         if: inputs.profile == 'packer'
         run: |
-          find . -name '*.pkr.hcl' -exec dirname {} \; | sort -u | while read dir; do
+          find . -name '*.pkr.hcl' -exec dirname {} \; | sort -u | while IFS= read -r dir; do
             echo "::group::Validating $dir"
             packer init "$dir" 2>/dev/null || true
             packer validate "$dir"
