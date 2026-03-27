@@ -1,0 +1,18 @@
+# Dependabot configuration for GitHub Actions updates
+# Checks weekly for new versions of actions used in workflows
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ci"
+    open-pull-requests-limit: 10

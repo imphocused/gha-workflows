@@ -1,0 +1,247 @@
+# Reusable Compliance Workflow
+# Called by all homelab repos to enforce consistent CI/CD compliance checks.
+#
+# Usage in caller repos:
+#   jobs:
+#     compliance:
+#       uses: <org>/gha-workflows/.github/workflows/compliance-reusable.yml@REPLACE_WITH_WORKFLOW_SHA
+#       with:
+#         profile: terraform
+#
+# Profiles: terraform | ansible | packer | scripts | octodns | websites
+
+name: Compliance Checks (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      profile:
+        description: >
+          Tool profile to run. Determines which linters, scanners, and
+          validation steps execute. One of: terraform, ansible, packer,
+          scripts, octodns, websites.
+        required: true
+        type: string
+      retention_days:
+        description: Artifact retention period for audit evidence.
+        required: false
+        default: 90
+        type: number
+
+# Deny all permissions at workflow level — grant minimum per job
+permissions: {}
+
+concurrency:
+  group: compliance-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Validate Inputs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate profile input
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.profile }}" in
+            terraform|ansible|packer|scripts|octodns|websites) ;;
+            *)
+              echo "::error::Invalid profile: '${{ inputs.profile }}'"
+              exit 1
+              ;;
+          esac
+
+  # ──────────────────────────────────────────────
+  # Lint & Format
+  # ──────────────────────────────────────────────
+  lint:
+    name: Lint & Format (${{ inputs.profile }})
+    runs-on: ubuntu-latest
+    needs: [preflight]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        # actions/checkout v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      # ── Terraform ──
+      - name: Terraform Format Check
+        if: inputs.profile == 'terraform'
+        run: terraform fmt -check -recursive
+
+      - name: TFLint
+        if: inputs.profile == 'terraform'
+        # terraform-linters/setup-tflint v6.2.2
+        uses: terraform-linters/setup-tflint@b480b8fcdaa6f2c577f8e4fa799e89e756bb7c93
+        # TODO: Add tflint --init && tflint --recursive after setup
+
+      - name: Terraform Validate
+        if: inputs.profile == 'terraform'
+        run: |
+          find . -name '*.tf' -exec dirname {} \; | sort -u | while read dir; do
+            echo "::group::Validating $dir"
+            terraform -chdir="$dir" init -backend=false 2>/dev/null || true
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done
+
+      # ── Ansible ──
+      - name: YAML Lint
+        if: inputs.profile == 'ansible' || inputs.profile == 'octodns'
+        run: |
+          pip install yamllint
+          yamllint .
+
+      - name: Ansible Lint
+        if: inputs.profile == 'ansible'
+        run: |
+          pip install ansible-lint
+          ansible-lint
+
+      # ── Packer ──
+      - name: Packer Format Check
+        if: inputs.profile == 'packer'
+        run: packer fmt -check -recursive .
+
+      - name: Packer Validate
+        if: inputs.profile == 'packer'
+        run: |
+          find . -name '*.pkr.hcl' -exec dirname {} \; | sort -u | while read dir; do
+            echo "::group::Validating $dir"
+            packer init "$dir" 2>/dev/null || true
+            packer validate "$dir"
+            echo "::endgroup::"
+          done
+
+      # ── Scripts ──
+      - name: Ruff (Python)
+        if: inputs.profile == 'scripts'
+        run: |
+          pip install ruff
+          ruff check .
+
+      - name: ShellCheck (Bash)
+        if: inputs.profile == 'scripts'
+        # ludeeus/action-shellcheck 2.0.0
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38
+        with:
+          scandir: '.'
+
+      # ── OctoDNS ──
+      - name: OctoDNS Validate
+        if: inputs.profile == 'octodns'
+        run: |
+          pip install octodns
+          echo "::notice::OctoDNS validation requires provider-specific config — add octodns-validate step"
+
+      # ── Websites ──
+      - name: HTML Lint
+        if: inputs.profile == 'websites'
+        run: |
+          npm install -g htmlhint
+          htmlhint "**/*.html" || true
+
+  # ──────────────────────────────────────────────
+  # Security Scanning
+  # ──────────────────────────────────────────────
+  security:
+    name: Security Scan (${{ inputs.profile }})
+    runs-on: ubuntu-latest
+    needs: [preflight]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        # actions/checkout v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Detect Secrets
+        run: |
+          pip install detect-secrets
+          detect-secrets scan --baseline .secrets.baseline
+          detect-secrets audit --report --baseline .secrets.baseline || true
+
+      - name: TFSec
+        if: inputs.profile == 'terraform'
+        # aquasecurity/tfsec-action v1.0.3
+        uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d83891162a721f2d6
+        with:
+          soft_fail: false
+
+      - name: Checkov
+        if: inputs.profile == 'terraform'
+        # bridgecrewio/checkov-action v12.3092.0
+        uses: bridgecrewio/checkov-action@0ce65fae06c148e349f955c3c35ad049c11e838c
+        with:
+          directory: .
+          quiet: true
+          soft_fail: false
+
+  # ──────────────────────────────────────────────
+  # Drift Detection
+  # ──────────────────────────────────────────────
+  drift:
+    name: Drift Detection
+    runs-on: ubuntu-latest
+    needs: [preflight]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        # actions/checkout v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Check for uncommitted changes
+        run: |
+          git diff --exit-code || {
+            echo "::error::Uncommitted changes detected — possible drift"
+            exit 1
+          }
+
+  # ──────────────────────────────────────────────
+  # Evidence Collection
+  # ──────────────────────────────────────────────
+  evidence:
+    name: Collect Audit Evidence
+    runs-on: ubuntu-latest
+    needs: [lint, security, drift]
+    if: always()
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        # actions/checkout v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Generate evidence manifest
+        run: |
+          mkdir -p audit-evidence
+          cat > audit-evidence/manifest.json <<EOF
+          {
+            "repository": "${{ github.repository }}",
+            "profile": "${{ inputs.profile }}",
+            "ref": "${{ github.ref }}",
+            "sha": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "lint_result": "${{ needs.lint.result }}",
+            "security_result": "${{ needs.security.result }}",
+            "drift_result": "${{ needs.drift.result }}"
+          }
+          EOF
+          echo "Evidence manifest:"
+          cat audit-evidence/manifest.json
+
+      - name: Upload audit evidence
+        # actions/upload-artifact v7.0.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        if: always()
+        with:
+          name: audit-evidence-${{ inputs.profile }}-${{ github.run_id }}
+          path: audit-evidence/
+          retention-days: ${{ inputs.retention_days }}

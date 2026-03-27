@@ -1,0 +1,27 @@
+name: Workflow enhancement request
+description: Request a new feature/input/check for reusable workflows
+title: "[Enhancement] "
+labels: ["enhancement", "workflow"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What operational/security gap are you trying to solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Consumer impact
+      description: Which repos/profiles are affected?
+    validations:
+      required: true

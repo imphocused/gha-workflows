@@ -1,0 +1,7 @@
+# Require DevSecOps ownership for all workflow changes.
+*                                   @your-org/devsecops-team
+
+# Optional finer-grained ownership:
+.github/workflows/*                 @your-org/devsecops-team
+README.md                           @your-org/devsecops-team
+SECURITY.md                         @your-org/security-team

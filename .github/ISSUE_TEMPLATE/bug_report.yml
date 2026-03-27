@@ -1,0 +1,34 @@
+name: Workflow bug report
+description: Report a defect in reusable workflow behavior
+title: "[Bug] "
+labels: ["bug", "workflow"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What failed and where?
+    validations:
+      required: true
+
+  - type: input
+    id: workflow
+    attributes:
+      label: Workflow path
+      placeholder: .github/workflows/compliance-reusable.yml
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true

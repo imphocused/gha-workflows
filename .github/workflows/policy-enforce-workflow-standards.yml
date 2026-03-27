@@ -1,0 +1,80 @@
+name: policy-enforce-workflow-standards
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+
+permissions: {}
+
+concurrency:
+  group: policy-enforce-workflow-standards-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  enforce-standards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+
+      - name: Install PyYAML dependency
+        run: pip install --disable-pip-version-check --no-input pyyaml
+
+      - name: Enforce workflow baseline standards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          import sys
+          import yaml
+
+          workflow_files = sorted(pathlib.Path('.github/workflows').glob('*.yml'))
+          workflow_files += sorted(pathlib.Path('.github/workflows').glob('*.yaml'))
+
+          violations = []
+
+          for wf in workflow_files:
+              data = yaml.safe_load(wf.read_text(encoding='utf-8')) or {}
+
+              # 1) Require top-level permissions.
+              if 'permissions' not in data:
+                  violations.append((wf, 'missing top-level permissions (expect permissions: {})'))
+
+              # 2) Require top-level concurrency.
+              if 'concurrency' not in data:
+                  violations.append((wf, 'missing top-level concurrency'))
+
+              # 3) Require at least one job.
+              jobs = data.get('jobs', {})
+              if not jobs:
+                  violations.append((wf, 'missing jobs'))
+                  continue
+
+              # 4) Require permissions per job.
+              for job_name, job in jobs.items():
+                  if 'permissions' not in job:
+                      violations.append((wf, f"job '{job_name}' missing permissions"))
+
+              # 5) Discourage pull_request_target by policy.
+              on_section = data.get('on')
+              if 'pull_request_target' in str(on_section):
+                  violations.append((wf, 'uses pull_request_target; requires explicit security review'))
+
+          if violations:
+              print('❌ Workflow standards violations:')
+              for wf, msg in violations:
+                  print(f'- {wf}: {msg}')
+              sys.exit(1)
+
+          print('✅ Workflow standards policy passed.')
+          PY
