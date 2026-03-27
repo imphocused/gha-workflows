@@ -26,8 +26,8 @@ jobs:
 
     steps:
       - name: Checkout
-        # actions/checkout v4.1.7 pinned SHA
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+        # actions/checkout v6.0.2 pinned SHA
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Install actionlint
         shell: bash
