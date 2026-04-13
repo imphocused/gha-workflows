@@ -175,7 +175,7 @@ jobs:
       - name: Checkov
         if: inputs.profile == 'terraform'
         # bridgecrewio/checkov-action v12.3092.0
-        uses: bridgecrewio/checkov-action@0ce65fae06c148e349f955c3c35ad049c11e838c
+        uses: bridgecrewio/checkov-action@9ff61ad7df06a619665acec928d66258bd6adc8f
         with:
           directory: .
           quiet: true
